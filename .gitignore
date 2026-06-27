@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+backend/.env
+backend/__pycache__/
+backend/tools/__pycache__/
+backend/services/__pycache__/
+backend/agents/__pycache__/
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.vite/
+frontend/.vite/
+
+# Environments & Keys
+.env
+.env.*
+!.env.example
+
+# IDEs & System
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+C:\Users\HP\.gemini\antigravity-ide\brain\**
