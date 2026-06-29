@@ -4,14 +4,32 @@ import math
 from typing import Dict, Any, List
 
 class HotelService:
+    """
+    A service class that queries the Google Places API to search for accommodation 
+    matching budget parameters, ranks the hotels using a safety/proximity/rating score model, 
+    and handles fallback search simulations.
+    """
+
     def __init__(self, api_key: str = None):
+        # Resolve the Google Places API key from parameters or server env vars
         self.api_key = api_key or os.getenv("GOOGLE_PLACES_API_KEY")
         if not self.api_key:
             raise ValueError("GOOGLE_PLACES_API_KEY must be set in environment variables")
         self.base_url = "https://maps.googleapis.com/maps/api/place"
 
     def get_hotels(self, city: str, budget_limit: float, city_lat: float = None, city_lng: float = None) -> List[Dict[str, Any]]:
-        """Searches for hotels in the given city, scores them, and filters by budget."""
+        """
+        Retrieves, ranks, and filters hotels in a given city.
+        
+        Args:
+            city (str): Destination city name.
+            budget_limit (float): Max budget per night for hotels in INR.
+            city_lat (float): Latitude of the city center.
+            city_lng (float): Longitude of the city center.
+            
+        Returns:
+            List[Dict[str, Any]]: Processed, sorted, and scored hotel profiles within budget constraints.
+        """
         url = f"{self.base_url}/textsearch/json"
         params = {
             "query": f"hotels in {city}",
@@ -25,10 +43,12 @@ class HotelService:
             status = res_json.get("status")
             results = res_json.get("results", [])
             
+            # Check for API errors or query limit constraints
             if not results or status == "REQUEST_DENIED" or status == "OVER_QUERY_LIMIT":
                 print(f"Google Places API returned status {status} or empty results. Using fallback hotels.")
                 return self._get_fallback_hotels(city, budget_limit, city_lat or 0.0, city_lng or 0.0)
             
+            # Resolve center latitude/longitude using the first retrieved hotel location if none specified
             if not city_lat or not city_lng:
                 city_lat = results[0]["geometry"]["location"]["lat"]
                 city_lng = results[0]["geometry"]["location"]["lng"]
@@ -43,6 +63,10 @@ class HotelService:
             return self._get_fallback_hotels(city, budget_limit, city_lat or 0.0, city_lng or 0.0)
 
     def _process_and_rank_hotels(self, results: List[Dict[str, Any]], budget_limit: float, city_lat: float, city_lng: float) -> List[Dict[str, Any]]:
+        """
+        Evaluates Places API search entries, maps budget constraints (using simulated prices), 
+        computes geographical distances, and scores each option.
+        """
         ranked_hotels = []
         
         for index, item in enumerate(results):
@@ -55,23 +79,31 @@ class HotelService:
             lat = loc.get("lat", city_lat)
             lng = loc.get("lng", city_lng)
             
+            # Calculate geodesic distance from city center to current hotel location
             distance_from_center = self._calculate_distance(city_lat, city_lng, lat, lng)
             
             # Map index and rating to a mock price fitting the budget structure (in INR)
+            # Base price is ₹4,000, scaled by rating and index offset
             price_per_night = round(4000 + (rating - 3.0) * 8000 + (index % 3) * 2400, 2)
             
+            # Prune hotels that exceed the user's allocated daily lodging budget
             if price_per_night > budget_limit:
                 continue
                 
+            # Mock close-range proximity indices to essential public security services
             dist_to_transport = round(0.1 + (index % 4) * 0.2, 2)
             dist_to_hospital = round(0.5 + (index % 5) * 0.4, 2)
             dist_to_police = round(0.8 + (index % 3) * 0.6, 2)
             has_24hr_reception = (index % 2 == 0)
             
+            # Scoring Algorithm:
+            # Positive factors: High average ratings (+15 points/star), review depth (+1 point per 100 reviews, capped at 10)
+            # Negative factors: Distance from center (-2 points/km), distance to transport (-5 points/km)
             score = (rating * 15) + (min(user_ratings_total, 1000) / 100) - (distance_from_center * 2) - (dist_to_transport * 5)
             if has_24hr_reception:
-                score += 5
+                score += 5 # Security bonus points
                 
+            # Accumulate clear explanations for recommendations dynamically
             reasons = []
             if rating >= 4.0:
                 reasons.append("Highly rated by travelers")
@@ -105,12 +137,16 @@ class HotelService:
                 "longitude": lng
             })
             
+        # Order list by descending score rating
         ranked_hotels.sort(key=lambda x: x["score"], reverse=True)
         return ranked_hotels[:5]
 
     def _calculate_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        """Haversine formula to calculate distance in km."""
-        R = 6371.0
+        """
+        Applies the Haversine formula to compute the spherical distance between two sets 
+        of latitude and longitude coordinates in kilometers.
+        """
+        R = 6371.0 # Earth's radius in km
         dlat = math.radians(lat2 - lat1)
         dlon = math.radians(lon2 - lon1)
         a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
@@ -118,7 +154,9 @@ class HotelService:
         return R * c
 
     def _get_fallback_hotels(self, city: str, budget_limit: float, city_lat: float, city_lng: float) -> List[Dict[str, Any]]:
-        """Fallback mock hotels if API fails."""
+        """
+        Produces simulated lodging options for fallback when Google Places requests fail.
+        """
         mock_data = [
             {"name": f"Grand Plaza Hotel {city}", "rating": 4.5, "reviews": 320, "price": 9600.0, "lat_offset": 0.01, "lng_offset": 0.01},
             {"name": f"Budget Inn {city}", "rating": 3.8, "reviews": 90, "price": 4800.0, "lat_offset": -0.01, "lng_offset": -0.02},
@@ -161,3 +199,4 @@ class HotelService:
             
         results.sort(key=lambda x: x["score"], reverse=True)
         return results
+

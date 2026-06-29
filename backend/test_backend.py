@@ -2,28 +2,36 @@ import os
 import sys
 from dotenv import load_dotenv
 
-# Ensure the backend directory is in the sys.path
+# Ensure the backend directory is in the sys.path to permit clean package imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# Load configurations from .env
 load_dotenv()
 
 def test_services():
+    """
+    An integration test suite that exercises all services, tools, and the AI Planner Agent.
+    Ensures that offline APIs fall back gracefully and online APIs produce expected schema keys.
+    """
     print("--- Starting Backend Services Integration Test ---")
     
-    # 1. Budget Service
+    # 1. Budget Service Validation
+    # Ensures the budget allocator accurately divides funds according to category percentages.
     from services.budget_service import BudgetService
     alloc = BudgetService.calculate_allocation(1000, 2)
     print("[Budget] Allocation:", alloc["allocation"])
-    assert alloc["allocation"]["hotel"] == 350.0
+    assert alloc["allocation"]["hotel"] == 350.0 # Hotel should represent exactly 35% of the total budget
     
-    # 2. Weather Service
+    # 2. Weather Service Validation
+    # Verifies forecast summaries are generated (live call or mock fallback).
     from services.weather_service import WeatherService
     ws = WeatherService()
     weather = ws.get_weather_forecast("Paris")
     print("[Weather] City:", weather["city"], "| Forecast Days:", len(weather["forecast"]))
     assert len(weather["forecast"]) > 0
     
-    # 3. Hotel Service
+    # 3. Hotel Service Validation
+    # Checks hotel search recommendations and budget filtering.
     from services.hotel_service import HotelService
     hs = HotelService()
     hotels = hs.get_hotels("Paris", 12000)
@@ -31,7 +39,8 @@ def test_services():
     if hotels:
         print("[Hotels] Top Pick:", hotels[0]["name"])
         
-    # 4. Restaurant Service
+    # 4. Restaurant Service Validation
+    # Validates restaurant search and menu generation.
     from services.restaurant_service import RestaurantService
     rs = RestaurantService()
     rests = rs.get_restaurants("Paris", 3200)
@@ -39,19 +48,22 @@ def test_services():
     if rests:
         print("[Restaurants] Top Pick:", rests[0]["name"])
         
-    # 5. Safety Service
+    # 5. Safety Service Validation
+    # Assesses proximity score calculations and safety tier bounds.
     from services.safety_service import SafetyService
     ss = SafetyService()
     safety = ss.assess_safety("Test Place", 4.5, 200, 0.4, 0.6, 0.2)
     print("[Safety] Score:", safety["safety_score_percentage"], "% | Tier:", safety["safety_tier"])
     
-    # 6. Navigation Service
+    # 6. Navigation Service Validation
+    # Confirms directions pathways and estimated cab fares calculations.
     from services.navigation_service import NavigationService
     ns = NavigationService()
     nav = ns.get_route("Hotel de Ville, Paris", "Gare du Nord, Paris", "transit")
     print("[Navigation] Route distance:", nav["distance_text"], "| duration:", nav["duration_text"])
     
-    # 7. Agent plan
+    # 7. Agent plan Validation
+    # Triggers the orchestration pipeline to produce a synthesized trip package.
     from agents.planner_agent import PlannerAgent
     agent = PlannerAgent()
     print("[Agent] Invoking Planner Agent...")
@@ -68,4 +80,6 @@ def test_services():
     print("\nSUCCESS: All backend services and agents validated successfully!")
 
 if __name__ == "__main__":
+    # Execute the integration tests sequentially
     test_services()
+

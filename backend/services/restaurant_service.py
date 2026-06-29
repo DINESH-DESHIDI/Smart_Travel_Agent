@@ -4,14 +4,31 @@ import math
 from typing import Dict, Any, List
 
 class RestaurantService:
+    """
+    A service class that interacts with the Google Places API to search for restaurants, 
+    calculates pricing parameters, and ranks options using reviews, location, and vegetarian availability.
+    """
+
     def __init__(self, api_key: str = None):
+        # Resolve Places API key from parameters or server env vars
         self.api_key = api_key or os.getenv("GOOGLE_PLACES_API_KEY")
         if not self.api_key:
             raise ValueError("GOOGLE_PLACES_API_KEY must be set in environment variables")
         self.base_url = "https://maps.googleapis.com/maps/api/place"
 
     def get_restaurants(self, city: str, budget_limit: float, city_lat: float = None, city_lng: float = None) -> List[Dict[str, Any]]:
-        """Searches for restaurants in the given city, scores them, and filters by budget."""
+        """
+        Queries restaurants in the specified city and evaluates them against the traveler's budget.
+        
+        Args:
+            city (str): Destination city name.
+            budget_limit (float): Max budget per meal in INR.
+            city_lat (float): Center latitude coordinate.
+            city_lng (float): Center longitude coordinate.
+            
+        Returns:
+            List[Dict[str, Any]]: Best-matched restaurant list ordered by ranking score.
+        """
         url = f"{self.base_url}/textsearch/json"
         params = {
             "query": f"restaurants in {city}",
@@ -25,10 +42,12 @@ class RestaurantService:
             status = res_json.get("status")
             results = res_json.get("results", [])
             
+            # Use mock fallback dataset on network limitations or API exceptions
             if not results or status == "REQUEST_DENIED" or status == "OVER_QUERY_LIMIT":
                 print(f"Google Places API returned status {status} or empty results. Using fallback restaurants.")
                 return self._get_fallback_restaurants(city, budget_limit, city_lat or 0.0, city_lng or 0.0)
             
+            # Resolve center latitude/longitude using the first retrieved item location if none specified
             if not city_lat or not city_lng:
                 city_lat = results[0]["geometry"]["location"]["lat"]
                 city_lng = results[0]["geometry"]["location"]["lng"]
@@ -43,7 +62,11 @@ class RestaurantService:
             return self._get_fallback_restaurants(city, budget_limit, city_lat or 0.0, city_lng or 0.0)
 
     def _process_and_rank_restaurants(self, results: List[Dict[str, Any]], budget_limit: float, city_lat: float, city_lng: float) -> List[Dict[str, Any]]:
+        """
+        Enriches Places API data with mock menu details, computes cost averages, and executes ranking.
+        """
         ranked_rests = []
+        # Predefined cuisine and menu items to structure mock restaurant menus
         cuisines_list = ["Local Specialities", "Italian", "Asian Fusion", "Traditional", "Street Food", "Cafe", "Fine Dining"]
         popular_dishes_list = [
             ["House Special Pasta", "Garlic Bread", "Tiramisu"],
@@ -66,24 +89,29 @@ class RestaurantService:
             lng = loc.get("lng", city_lng)
             
             distance_from_center = self._calculate_distance(city_lat, city_lng, lat, lng)
-            # Average meal cost calculated in INR
+            # Average meal cost calculated in INR: Base cost + rating offset + index offset
             avg_meal_cost = round(800 + (rating - 3.0) * 1600 + (index % 4) * 640, 2)
             
+            # Prune restaurants that exceed the traveler's single-meal budget threshold
             if avg_meal_cost > budget_limit:
                 continue
                 
             cuisine = cuisines_list[index % len(cuisines_list)]
             popular_dishes = popular_dishes_list[index % len(popular_dishes_list)]
-            veg_available = (index % 3 != 0)
+            veg_available = (index % 3 != 0) # Mock vegetarian options availability
             
             is_open_now = item.get("opening_hours", {}).get("open_now", True)
             
+            # Scoring Algorithm:
+            # Positive factors: Rating weight (+12 points/star), review depth (+1 point per 50 reviews, max 10 points)
+            # Negative factors: Geodesic distance from center (-1.5 points/km)
             score = (rating * 12) + (min(user_ratings_total, 500) / 50) - (distance_from_center * 1.5)
             if veg_available:
-                score += 3
+                score += 3 # Vegetarian support bonus
             if is_open_now:
-                score += 2
+                score += 2 # Open indicator bonus
                 
+            # Build text highlights to explain recommendation choices in UI
             reasons = []
             if rating >= 4.0:
                 reasons.append("Highly rated by customers")
@@ -119,6 +147,9 @@ class RestaurantService:
         return ranked_rests[:5]
 
     def _calculate_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        """
+        Computes geodesic distance between coordinate pairs using the Haversine formula.
+        """
         R = 6371.0
         dlat = math.radians(lat2 - lat1)
         dlon = math.radians(lon2 - lon1)
@@ -127,7 +158,9 @@ class RestaurantService:
         return R * c
 
     def _get_fallback_restaurants(self, city: str, budget_limit: float, city_lat: float, city_lng: float) -> List[Dict[str, Any]]:
-        """Fallback mock restaurants if API fails."""
+        """
+        Mock restaurant listing for offline validation or API failure recovery.
+        """
         mock_data = [
             {"name": f"The Local Bistro {city}", "rating": 4.6, "reviews": 210, "cost": 2000.0, "cuisine": "Traditional", "veg": True},
             {"name": f"Bella Italia {city}", "rating": 4.2, "reviews": 180, "cost": 2400.0, "cuisine": "Italian", "veg": True},
@@ -168,3 +201,4 @@ class RestaurantService:
             
         results.sort(key=lambda x: x["score"], reverse=True)
         return results
+

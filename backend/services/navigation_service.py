@@ -3,14 +3,31 @@ import requests
 from typing import Dict, Any
 
 class NavigationService:
+    """
+    A service class that integrates with the Google Maps Directions API to fetch route details 
+    (distance, duration, transit routes, and walking steps). Features smart fallback generation, 
+    regex HTML stripping, and customized cab fare estimators.
+    """
+
     def __init__(self, api_key: str = None):
+        # Retrieve the Directions API Key from environment config
         self.api_key = api_key or os.getenv("GOOGLE_MAPS_API_KEY")
         if not self.api_key:
             raise ValueError("GOOGLE_MAPS_API_KEY must be set in environment variables")
         self.base_url = "https://maps.googleapis.com/maps/api/directions/json"
 
     def get_route(self, origin: str, destination: str, mode: str = "transit") -> Dict[str, Any]:
-        """Fetches directions between origin and destination."""
+        """
+        Retrieves real-time routing parameters between an origin and destination address.
+        
+        Args:
+            origin (str): Address of origin.
+            destination (str): Address of destination.
+            mode (str): Mode of travel, defaults to "transit" (transit, walking, driving, etc).
+            
+        Returns:
+            Dict[str, Any]: Compiled routing guidelines, walking directions, and taxi fare estimations.
+        """
         params = {
             "origin": origin,
             "destination": destination,
@@ -24,19 +41,23 @@ class NavigationService:
             data = response.json()
             return self._parse_directions(data, origin, destination, mode)
         except Exception as e:
+            # Prevent failures from impacting plan completion by using simulated directions
             print(f"Error fetching directions: {e}")
             return self._get_fallback_directions(origin, destination, mode)
 
     def _parse_directions(self, data: Dict[str, Any], origin: str, destination: str, mode: str) -> Dict[str, Any]:
+        """
+        Extracts key route details, sanitizes instructions, and estimates taxi fares.
+        """
         routes = data.get("routes", [])
         if not routes:
             return self._get_fallback_directions(origin, destination, mode)
             
         leg = routes[0]["legs"][0]
         distance_text = leg.get("distance", {}).get("text", "Unknown")
-        distance_value = leg.get("distance", {}).get("value", 0)
+        distance_value = leg.get("distance", {}).get("value", 0) # distance in meters
         duration_text = leg.get("duration", {}).get("text", "Unknown")
-        duration_value = leg.get("duration", {}).get("value", 0)
+        duration_value = leg.get("duration", {}).get("value", 0) # duration in seconds
         
         start_address = leg.get("start_address", origin)
         end_address = leg.get("end_address", destination)
@@ -46,6 +67,7 @@ class NavigationService:
         metro_lines = []
         
         for step in steps:
+            # HTML tags are stripped from Google Maps API responses to make output clean for the UI
             html_instructions = step.get("html_instructions", "")
             import re
             clean_instruction = re.sub('<[^<]+?>', '', html_instructions)
@@ -62,10 +84,12 @@ class NavigationService:
                 if line_name:
                     metro_lines.append(f"Take {line_name} from {departure_stop} to {arrival_stop}")
                     
+        # Compute distance metric and custom estimated taxi charges (Base fare + Rate per kilometer in INR)
         distance_km = distance_value / 1000.0
         cab_estimate = round(100.0 + 15.0 * distance_km, 2)
         
         duration_mins = duration_value / 60.0
+        # Recommend early departure alerts based on travel distance to counter traffic variance
         recommended_departure_buffer = 15 if distance_km > 5 else 5
         
         return {
@@ -75,7 +99,7 @@ class NavigationService:
             "distance_text": distance_text,
             "duration_mins": round(duration_mins, 1),
             "duration_text": duration_text,
-            "walking_steps": walking_directions[:5],
+            "walking_steps": walking_directions[:5], # Restrict list items to avoid UI clutter
             "transit_recommendations": metro_lines,
             "cab_estimate_inr": cab_estimate,
             "recommended_departure_buffer_mins": recommended_departure_buffer,
@@ -83,9 +107,13 @@ class NavigationService:
         }
 
     def _get_fallback_directions(self, origin: str, destination: str, mode: str) -> Dict[str, Any]:
-        """Fallback mock navigation details if API fails."""
+        """
+        Mock route builder using randomized distances for simulation when Directions API is disabled.
+        """
         import random
+        # Produce a distance between 3.5 and 8.5 km
         distance_km = round(3.5 + random.random() * 5.0, 2)
+        # Walking pace is simulated slower than transit pace
         duration_mins = round(distance_km * 3.5, 1) if mode == "walking" else round(distance_km * 2.0 + 8.0, 1)
         
         return {
@@ -107,3 +135,4 @@ class NavigationService:
             "recommended_departure_buffer_mins": 10 if distance_km > 3 else 5,
             "traffic_info": "Clear route, normal traffic."
         }
+

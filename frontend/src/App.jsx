@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 function App() {
+  // --- React State Hooks for Trip Parameters ---
   const [city, setCity] = useState('New York');
   const [days, setDays] = useState(3);
   const [budget, setBudget] = useState(120000);
@@ -8,17 +9,21 @@ function App() {
   const [travelType, setTravelType] = useState('friends');
   const [preferredTransport, setPreferredTransport] = useState('transit');
 
-  // Custom preference tags
+  // --- React State Hooks for Tag Preferences ---
   const [preferences, setPreferences] = useState(['vegetarian', 'loves museums', 'budget traveler']);
   const [newPref, setNewPref] = useState('');
 
+  // --- React State Hooks for Server Response Data ---
   const [plan, setPlan] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Tab controller
+  // --- UI Layout active tab manager state ---
   const [activeTab, setActiveTab] = useState('timeline');
 
+  /**
+   * Appends a new customized preference tag to the user's checklist.
+   */
   const addPreference = (e) => {
     e.preventDefault();
     if (newPref.trim() && !preferences.includes(newPref.trim().toLowerCase())) {
@@ -27,10 +32,16 @@ function App() {
     }
   };
 
+  /**
+   * Deletes a preference tag by filtering it out from the active states list.
+   */
   const removePreference = (pref) => {
     setPreferences(preferences.filter((p) => p !== pref));
   };
 
+  /**
+   * Dispatches a POST request to `/api/plan` on the FastAPI server to build a travel plan.
+   */
   const fetchPlan = async () => {
     setLoading(true);
     setError(null);
@@ -45,6 +56,7 @@ function App() {
       }
       const data = await response.json();
       setPlan(data);
+      // Automatically switch to the Day-wise Timeline tab on successful loading
       setActiveTab('timeline');
     } catch (err) {
       setError(err.message);
@@ -53,12 +65,14 @@ function App() {
     }
   };
 
+  /**
+   * Requests the backend to update specific sections (Budget limit, Weather change simulation, Hotel rotates).
+   */
   const regeneratePart = async (changeType) => {
     if (!plan) return;
     setLoading(true);
     setError(null);
 
-    // Simulate updating the sliders / params
     try {
       const response = await fetch('http://127.0.0.1:8000/api/regenerate', {
         method: 'POST',
@@ -87,6 +101,9 @@ function App() {
     }
   };
 
+  /**
+   * Helper that compiles state hooks parameters into a standardized JSON payload structure.
+   */
   const jsonRequestPayload = () => {
     return JSON.stringify({
       city,
@@ -98,6 +115,7 @@ function App() {
       preferences
     });
   };
+
 
   return (
     <div className="app-container">
